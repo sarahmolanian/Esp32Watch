@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="WatchLink"/>
+  <title>WatchLink</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:      #060a10;
+      --surface: #0d1420;
+      --card:    #111927;
+      --accent:  #00e5ff;
+      --accent2: #7b61ff;
+      --green:   #00ff94;
+      --orange:  #ff6b35;
+      --red:     #ff4560;
+      --text:    #e8f0fe;
+      --muted:   #3a4a60;
+      --border:  rgba(0,229,255,0.12);
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overflow-x: hidden;
+    }
+
+    /* Grid bg */
+    body::before {
+      content:'';
+      position:fixed; inset:0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 36px 36px;
+      pointer-events:none; z-index:0;
+    }
+
+    .app { max-width:480px; margin:0 auto; padding:20px 16px 100px; position:relative; z-index:1; }
+
+    /* ── Setup Screen ── */
+    #setup-screen {
+      position:fixed; inset:0; background:var(--bg); z-index:100;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      padding:32px 24px; gap:24px;
+    }
+
+    .setup-logo {
+      font-size:32px; font-weight:800; color:var(--accent);
+      letter-spacing:3px; text-transform:uppercase;
+    }
+
+    .setup-sub {
+      font-family:'DM Mono', monospace; font-size:11px;
+      color:var(--muted); letter-spacing:2px; text-transform:uppercase;
+      text-align:center;
+    }
+
+    .setup-input-wrap { width:100%; max-width:320px; display:flex; flex-direction:column; gap:8px; }
+
+    .setup-label {
+      font-family:'DM Mono', monospace; font-size:10px;
+      color:var(--accent); letter-spacing:2px; text-transform:uppercase;
+    }
+
+    .setup-input {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:12px; padding:14px 16px;
+      font-family:'DM Mono', monospace; font-size:16px;
+      color:var(--text); width:100%; outline:none;
+      transition:border-color 0.3s;
+    }
+    .setup-input:focus { border-color:var(--accent); }
+    .setup-input::placeholder { color:var(--muted); }
+
+    .setup-hint {
+      font-family:'DM Mono', monospace; font-size:10px;
+      color:var(--muted); text-align:center;
+    }
+
+    .btn-primary {
+      background:linear-gradient(135deg, rgba(0,229,255,0.15), rgba(123,97,255,0.15));
+      border:1px solid var(--accent); border-radius:14px;
+      color:var(--accent); font-family:'DM Mono', monospace;
+      font-size:12px; letter-spacing:2px; text-transform:uppercase;
+      padding:14px 32px; cursor:pointer; width:100%; max-width:320px;
+      transition:all 0.3s;
+    }
+    .btn-primary:active { transform:scale(0.97); }
+
+    /* ── Header ── */
+    .header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:24px;
+    }
+
+    .logo {
+      font-size:20px; font-weight:800; color:var(--accent);
+      letter-spacing:3px; text-transform:uppercase;
+    }
+
+    .status-pill {
+      display:flex; align-items:center; gap:6px;
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:20px; padding:5px 12px;
+      font-family:'DM Mono', monospace; font-size:10px;
+      letter-spacing:1px; text-transform:uppercase;
+    }
+
+    .status-dot {
+      width:7px; height:7px; border-radius:50%;
+      background:var(--muted); transition:all 0.5s;
+    }
+    .status-dot.connected { background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 2s infinite; }
+    .status-dot.error     { background:var(--red); }
+
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:0.6; transform:scale(0.85); }
+    }
+
+    /* ── Steps Hero ── */
+    .steps-hero {
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:24px; padding:28px 24px;
+      margin-bottom:16px; text-align:center;
+      position:relative; overflow:hidden;
+    }
+
+    .steps-hero::before {
+      content:'';
+      position:absolute; inset:0;
+      background:radial-gradient(circle at 50% 0%, rgba(0,229,255,0.06), transparent 70%);
+    }
+
+    .steps-num {
+      font-family:'DM Mono', monospace;
+      font-size:56px; font-weight:500;
+      color:var(--green); line-height:1;
+      text-shadow:0 0 30px rgba(0,255,148,0.4);
+      letter-spacing:-2px;
+    }
+
+    .steps-lbl {
+      font-family:'DM Mono', monospace; font-size:10px;
+      color:var(--muted); letter-spacing:3px;
+      text-transform:uppercase; margin-top:6px;
+    }
+
+    .steps-bar-wrap {
+      margin-top:16px; height:3px;
+      background:rgba(0,229,255,0.08); border-radius:2px; overflow:hidden;
+    }
+
+    .steps-bar-fill {
+      height:100%;
+      background:linear-gradient(90deg, var(--green), var(--accent));
+      border-radius:2px; transition:width 1s ease;
+    }
+
+    .steps-goal {
+      font-family:'DM Mono', monospace; font-size:9px;
+      color:var(--muted); margin-top:6px; letter-spacing:1px;
+    }
+
+    /* ── Row cards ── */
+    .row { display:flex; gap:12px; margin-bottom:16px; }
+
+    .card {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:18px; padding:16px; flex:1;
+      position:relative; overflow:hidden;
+    }
+
+    .card-icon { font-size:18px; margin-bottom:6px; }
+    .card-val  { font-family:'DM Mono', monospace; font-size:26px; color:var(--accent); line-height:1; }
+    .card-unit { font-size:13px; color:var(--muted); }
+    .card-lbl  { font-family:'DM Mono', monospace; font-size:9px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:4px; }
+
+    .bat-bar-wrap { height:3px; background:rgba(0,229,255,0.08); border-radius:2px; margin-top:8px; overflow:hidden; }
+    .bat-bar-fill { height:100%; background:linear-gradient(90deg, var(--accent), var(--accent2)); border-radius:2px; transition:width 1s ease; }
+
+    /* ── Notifications ── */
+    .section-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:10px;
+    }
+
+    .section-title {
+      font-family:'DM Mono', monospace; font-size:10px;
+      color:var(--accent); letter-spacing:3px; text-transform:uppercase;
+    }
+
+    .notif-count {
+      font-family:'DM Mono', monospace; font-size:10px;
+      color:var(--muted); letter-spacing:1px;
+    }
+
+    .notif-list { display:flex; flex-direction:column; gap:8px; }
+
+    .notif-item {
+      background:var(--card); border:1px solid rgba(123,97,255,0.15);
+      border-radius:14px; padding:12px 14px;
+      display:flex; gap:10px; align-items:flex-start;
+      animation:slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity:0; transform:translateX(-10px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+
+    .notif-icon { font-size:18px; margin-top:1px; flex-shrink:0; }
+
+    .notif-body { flex:1; min-width:0; }
+
+    .notif-app {
+      font-family:'DM Mono', monospace; font-size:9px;
+      color:var(--accent2); letter-spacing:1px; text-transform:uppercase;
+    }
+
+    .notif-text {
+      font-size:13px; color:var(--text);
+      margin-top:3px; line-height:1.4;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+
+    .notif-time {
+      font-family:'DM Mono', monospace; font-size:9px;
+      color:var(--muted); flex-shrink:0; margin-top:2px;
+    }
+
+    .notif-empty {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:14px; padding:24px;
+      text-align:center; font-family:'DM Mono', monospace;
+      font-size:11px; color:var(--muted); letter-spacing:1px;
+    }
+
+    /* ── IP bar at bottom ── */
+    .ip-bar {
+      position:fixed; bottom:0; left:0; right:0;
+      background:rgba(6,10,16,0.95); border-top:1px solid var(--border);
+      padding:10px 20px 20px;
+      display:flex; align-items:center; gap:10px; z-index:50;
+      backdrop-filter:blur(10px);
+    }
+
+    .ip-label {
+      font-family:'DM Mono', monospace; font-size:9px;
+      color:var(--muted); letter-spacing:1px; text-transform:uppercase;
+      flex-shrink:0;
+    }
+
+    .ip-val {
+      font-family:'DM Mono', monospace; font-size:12px;
+      color:var(--accent); flex:1;
+    }
+
+    .ip-edit-btn {
+      background:transparent; border:1px solid var(--border);
+      border-radius:8px; color:var(--muted);
+      font-family:'DM Mono', monospace; font-size:9px;
+      letter-spacing:1px; text-transform:uppercase;
+      padding:5px 10px; cursor:pointer; flex-shrink:0;
+    }
+
+    /* ── Loader ── */
+    .spinner {
+      display:inline-block; width:12px; height:12px;
+      border:2px solid var(--border); border-top-color:var(--accent);
+      border-radius:50%; animation:spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+
+<!-- ── Setup Screen ── -->
+<div id="setup-screen">
+  <div class="setup-logo">My Watch</div>
+  <div class="setup-sub">Companion App</div>
+  <div class="setup-input-wrap">
+    <div class="setup-label">Watch's IP Address</div>
+    <input class="setup-input" id="ip-input" type="text"
+           placeholder="192.168.1.xx" inputmode="decimal"/>
+    <div class="setup-hint">Find it after connecting to the Wifi</div>
+  </div>
+  <button class="btn-primary" onclick="connect()">⚡ Connect</button>
+</div>
+
+<!-- ── Main App ── -->
+<div class="app hidden" id="main-app">
+
+  <div class="header">
+    <div class="logo">My Watch</div>
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">connecting</span>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps-hero">
+    <div class="steps-num" id="steps-val">—</div>
+    <div class="steps-lbl">steps today</div>
+    <div class="steps-bar-wrap">
+      <div class="steps-bar-fill" id="steps-bar" style="width:0%"></div>
+    </div>
+    <div class="steps-goal" id="steps-goal">— / 10,000 goal</div>
+  </div>
+
+  <!-- Battery + Refresh -->
+  <div class="row">
+    <div class="card">
+      <div class="card-icon">🔋</div>
+      <div class="card-val"><span id="bat-val">—</span><span class="card-unit">%</span></div>
+      <div class="card-lbl">Watch Battery</div>
+      <div class="bat-bar-wrap">
+        <div class="bat-bar-fill" id="bat-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;">
+      <div id="refresh-icon" style="font-size:28px;cursor:pointer;" onclick="fetchAll()">🔄</div>
+      <div class="card-lbl" id="last-update">tap to refresh</div>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="section-header">
+    <div class="section-title">// Notifications</div>
+    <div class="notif-count" id="notif-count">0 alerts</div>
+  </div>
+  <div class="notif-list" id="notif-list">
+    <div class="notif-empty">No notifications yet.<br/>Set up iPhone Shortcuts to forward them.</div>
+  </div>
+
+</div>
+
+<!-- ── IP bar ── -->
+<div class="ip-bar hidden" id="ip-bar">
+  <span class="ip-label">Ip Address</span>
+  <span class="ip-val" id="ip-display"></span>
+  <button class="ip-edit-btn" onclick="resetSetup()">change</button>
+</div>
+
+<script>
+  const GOAL = 10000;
+  let ESP_IP = localStorage.getItem('esp_ip') || '';
+  let pollTimer = null;
+
+  const appIcons = {
+    'whatsapp': '💬', 'phone': '📞', 'sms': '📩', 'messages': '📩',
+    'instagram': '📸', 'telegram': '✈️', 'mail': '📧', 'gmail': '📧',
+    'default': '🔔'
+  };
+
+  function getIcon(app) {
+    const key = app.toLowerCase();
+    for (const [k, v] of Object.entries(appIcons)) {
+      if (key.includes(k)) return v;
+    }
+    return appIcons.default;
+  }
+
+  function connect() {
+    const val = document.getElementById('ip-input').value.trim();
+    if (!val) return;
+    ESP_IP = val.startsWith('http') ? val : 'http://' + val;
+    localStorage.setItem('esp_ip', ESP_IP);
+    startApp();
+  }
+
+  function startApp() {
+    if (!ESP_IP) { showSetup(); return; }
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    document.getElementById('ip-bar').classList.remove('hidden');
+    document.getElementById('ip-display').textContent = ESP_IP.replace('http://', '');
+    fetchAll();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(fetchAll, 5000);
+  }
+
+  function showSetup() {
+    document.getElementById('setup-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.add('hidden');
+    document.getElementById('ip-bar').classList.add('hidden');
+  }
+
+  function resetSetup() {
+    if (pollTimer) clearInterval(pollTimer);
+    localStorage.removeItem('esp_ip');
+    ESP_IP = '';
+    showSetup();
+  }
+
+  function setStatus(state) {
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    dot.className = 'status-dot ' + (state === 'ok' ? 'connected' : state === 'error' ? 'error' : '');
+    text.textContent = state === 'ok' ? 'connected' : state === 'error' ? 'offline' : 'syncing';
+  }
+
+  async function fetchAll() {
+    if (!ESP_IP) return;
+    setStatus('syncing');
+    try {
+      const res  = await fetch(ESP_IP + '/all', { signal: AbortSignal.timeout(4000) });
+      const data = await res.json();
+      setStatus('ok');
+      updateSteps(data.steps);
+      updateBattery(data.battery);
+      updateNotifications(data.notifications);
+      const now = new Date();
+      document.getElementById('last-update').textContent =
+        now.getHours().toString().padStart(2,'0') + ':' +
+        now.getMinutes().toString().padStart(2,'0') + ':' +
+        now.getSeconds().toString().padStart(2,'0');
+    } catch (e) {
+      setStatus('error');
+    }
+  }
+
+  function updateSteps(steps) {
+    document.getElementById('steps-val').textContent = steps.toLocaleString();
+    const pct = Math.min((steps / GOAL) * 100, 100);
+    document.getElementById('steps-bar').style.width = pct + '%';
+    document.getElementById('steps-goal').textContent = steps.toLocaleString() + ' / ' + GOAL.toLocaleString() + ' goal';
+  }
+
+  function updateBattery(pct) {
+    document.getElementById('bat-val').textContent = pct;
+    document.getElementById('bat-bar').style.width = pct + '%';
+    const fill = document.getElementById('bat-bar');
+    if (pct < 20)      fill.style.background = 'var(--red)';
+    else if (pct < 50) fill.style.background = 'var(--orange)';
+    else               fill.style.background = 'linear-gradient(90deg, var(--accent), var(--accent2))';
+  }
+
+  function updateNotifications(notifs) {
+    const list = document.getElementById('notif-list');
+    const count = document.getElementById('notif-count');
+    if (!notifs || notifs.length === 0) {
+      list.innerHTML = '<div class="notif-empty">No notifications yet.<br/>Set up iPhone Shortcuts to forward them.</div>';
+      count.textContent = '0 alerts';
+      return;
+    }
+    count.textContent = notifs.length + ' alert' + (notifs.length > 1 ? 's' : '');
+    list.innerHTML = notifs.map(n => `
+      <div class="notif-item">
+        <div class="notif-icon">${getIcon(n.app)}</div>
+        <div class="notif-body">
+          <div class="notif-app">${n.app}</div>
+          <div class="notif-text">${n.text}</div>
+        </div>
+        <div class="notif-time">${n.time}</div>
+      </div>
+    `).join('');
+  }
+
+  // Auto-start if IP saved
+  window.onload = () => {
+    if (ESP_IP) {
+      document.getElementById('ip-input').value = ESP_IP.replace('http://', '');
+      startApp();
+    }
+  };
+</script>
+</body>
+</html>
