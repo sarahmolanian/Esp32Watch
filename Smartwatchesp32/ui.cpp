@@ -9,6 +9,7 @@
 #include "DinoGame.h"
 #include "bluetooth_module.h"
 #include "web_server.h"
+#include <WiFi.h>
 
 // ===== UI STATES =====
 enum UIState {
@@ -39,6 +40,8 @@ static bool     wifiToggleSelected = true;
 
 static char   wifiPassword[32] = "";
 static String selectedSSID     = "";
+static bool   wifiConnected    = false;   
+static char   wifiIPStr[20]    = "";
 static int btNotifIndex = 0;   // which notification is selected
 
 // ===== Keyboard instance =====
@@ -303,24 +306,50 @@ void drawWiFiPass() {
 }
 
 // ===== DRAW WIFI STATUS =====
+
 void drawWiFiStatus() {
+
+    // Phase 1: attempt connection (runs only while !wifiConnected)
+    if (!wifiConnected) {
+        OLED_BufferClear();
+        char ssidShort[16];
+        strncpy(ssidShort, selectedSSID.c_str(), 14);
+        ssidShort[14] = '\0';
+        OLED_ShowString(5,  0,  ssidShort, 12);
+        OLED_ShowString(5,  18, "Connecting...", 12);
+        OLED_Flush();
+
+        bool ok = wifi_connect(selectedSSID.c_str(), wifiPassword);
+
+        if (ok) {
+            IPAddress ip = WiFi.localIP();
+            sprintf(wifiIPStr, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+            wifiConnected = true;
+            webserver_begin();
+        } else {
+            // Failed — draw error and wait for BACK
+            OLED_BufferClear();
+            OLED_ShowString(22, 16, "FAILED!", 12);
+            OLED_ShowString(5,  36, "Press BACK to go back", 8);
+            OLED_Flush();
+        }
+        forceRedraw = true;
+        return;
+    }
+
+    // Phase 2: already connected — draw info screen every tick
     OLED_BufferClear();
-    OLED_ShowString(10, 20, "Connecting...", 12);
+    OLED_ShowString(5,  0,  "Connected!", 12);
+
+    char ssidShort[16];
+    strncpy(ssidShort, selectedSSID.c_str(), 14);
+    ssidShort[14] = '\0';
+    OLED_ShowString(5, 16, ssidShort, 12);
+
+    OLED_ShowString(5, 32, wifiIPStr, 12);
+
+    OLED_ShowString(5, 50, "BACK to menu", 8);
     OLED_Flush();
-
-    bool ok = wifi_connect(selectedSSID.c_str(), wifiPassword);
-
-    OLED_BufferClear();
-    if (ok)
-        OLED_ShowString(25, 26, "SUCCESS!", 12);
-    else
-        OLED_ShowString(30, 26, "FAILED", 12);
-    OLED_Flush();
-
-    delay(2000);
-
-    currentState = UI_WIFI;
-    forceRedraw  = true;
 }
 
 // ===== DRAW BLE =====
@@ -526,6 +555,16 @@ void handleInput() {
     else if (currentState == UI_WIFI) {
         if (btnPressed(BTN_SELECT)) {
             if (wifiToggleSelected) {
+                if (wifi_isEnabled()) {
+                    // User turning WiFi OFF — stop server and clean up
+                    webserver_stop();
+                    wifiConnected = false;
+                    wifiIPStr[0]  = '\0';
+                    memset(wifiPassword, 0, sizeof(wifiPassword));
+                    selectedSSID       = "";
+                    wifiIndex          = 0;
+                    wifiToggleSelected = true;
+                }
                 wifi_toggle();
                 if (!wifi_isEnabled()) wifiToggleSelected = true;
             } else {
@@ -569,6 +608,13 @@ void handleInput() {
             strncpy(wifiPassword, kb.password, 31);
             wifiPassword[31] = '\0';
             currentState = UI_WIFI_STATUS;
+            forceRedraw  = true;
+        }
+    }
+    // ===== WIFI STATUS =====
+    else if (currentState == UI_WIFI_STATUS) {
+        if (btnPressed(BTN_BACK)) {
+            currentState = UI_WIFI;
             forceRedraw  = true;
         }
     }
