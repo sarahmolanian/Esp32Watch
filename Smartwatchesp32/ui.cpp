@@ -6,7 +6,10 @@
 #include "wifi_module.h"
 #include "keyboardesp.h"
 #include "Doom.h"
+#include "display.h"
+#include "sprites.h"
 #include "DinoGame.h"
+#include "castleboy.h"
 #include "bluetooth_module.h"
 #include "web_server.h"
 #include <WiFi.h>
@@ -21,6 +24,7 @@ enum UIState {
     UI_PAC_MAN,
     UI_FLAPPY_BIRD,
     UI_DOOM_1993,
+    UI_CASTLE_BOY,
     UI_WIFI,
     UI_WIFI_PASS,
     UI_WIFI_STATUS,
@@ -69,9 +73,10 @@ const char* gamesItems[] = {
     "Dino Game",
     "Pac-Man",
     "Flappy Bird",
-    "Doom 1993"
+    "Doom 1993",
+    "Castle Boy"
 };
-#define GAMES_SIZE 4
+#define GAMES_SIZE 5
 
 static int settingsIndex = 0;
 static int menuIndex     = 0;
@@ -224,12 +229,16 @@ void drawMenu() {
 void drawGames() {
     OLED_BufferClear();
     OLED_ShowString(25, 0, "GAMES", 12);
-    for (int i = 0; i < GAMES_SIZE; i++) {
-        int y = 14 + i * 12;
-        if (i == gamesIndex)
+
+    // show 3 items at a time, scroll with gamesIndex
+    for (int i = 0; i < 4; i++) {
+        int idx = (gamesIndex + i) % GAMES_SIZE;
+        int y   = 14 + i * 12;
+        if (i == 0)
             OLED_ShowString(0, y, ">", 12);
-        OLED_ShowString(10, y, gamesItems[i], 12);
+        OLED_ShowString(10, y, gamesItems[idx], 12);
     }
+
     OLED_Flush();
 }
 
@@ -433,6 +442,75 @@ void runDino() {
     forceRedraw  = true;
 }
 
+// ===== CASTLE BOY RUNNER =====
+static bool castleboyInitialised = false;
+
+/*void runCastleBoy() {
+    if (!castleboyInitialised) {
+        castleboy_setup();
+        castleboyInitialised = true;
+    }
+
+    bool keepRunning = castleboy_loop();
+     // Spin in a tight loop like runDoom() — castleboy_loop() manages its own frame rate
+    while (castleboy_loop()) {
+        // yield to RTOS so WiFi/BT tasks don't starve
+        yield();
+    }
+    
+    // Fill screen white so the fade has something to fade from
+    CB::Display::fillRect(0, 0, SCREEN_W, SCREEN_H, 1);
+    CB::Display::display();   // push white frame to hardware
+
+    if (!keepRunning) {
+        // Fade out screen on exit — same effect as Doom
+        for (uint8_t i = GRADIENT_COUNT - 1; i < GRADIENT_COUNT; i--) {
+            fadeScreen(i, false);
+            displayFlush();
+            delay(40);
+            if (i == 0) break;
+        }
+    }
+
+   
+    
+    // castleboy_loop() returned false = player held BACK to exit
+    castleboyInitialised = false;
+    currentState = UI_GAME;
+    forceRedraw  = true;
+    OLED_BufferClear();
+    OLED_Flush();
+}*/
+
+void runCastleBoy() {
+    if (!castleboyInitialised) {
+        castleboy_setup();
+        castleboyInitialised = true;
+    }
+
+    while (castleboy_loop()) { yield(); }
+
+    // Restore last real frame from PREV
+    for (uint8_t col = 0; col < 128; col++)
+        for (uint8_t page = 0; page < 8; page++)
+            OLED_GRAM[col][page] = OLED_GRAM_PREV[col][page];
+
+    // Exactly like doom_loop() — i goes 0..GRADIENT_COUNT-1
+    for (uint8_t i = 0; i < GRADIENT_COUNT; i++) {
+        fadeScreen(i, false);
+        // Force dirty so displayFlush() actually sends
+        memset(OLED_GRAM_PREV, 0x00, sizeof(OLED_GRAM_PREV));
+        displayFlush();
+        delay(40);
+    }
+
+    castleboyInitialised = false;
+    currentState = UI_GAME;
+    forceRedraw  = true;
+    OLED_BufferClear();
+    OLED_Flush();
+}
+
 // ===== INPUT HANDLING =====
 void handleInput() {
 
@@ -503,6 +581,7 @@ void handleInput() {
             else if (gamesIndex == 1) currentState = UI_PAC_MAN;
             else if (gamesIndex == 2) currentState = UI_FLAPPY_BIRD;
             else if (gamesIndex == 3) currentState = UI_DOOM_1993;
+            else if (gamesIndex == 4) currentState = UI_CASTLE_BOY;
         }
         if (btnPressed(BTN_BACK)) {
             currentState = UI_MENU;
@@ -710,6 +789,11 @@ void ui_update() {
     // Dino Game owns the CPU while active                // ← NEW
     if (currentState == UI_DINO_GAME) {
         runDino();
+        return;
+    }
+
+    if (currentState == UI_CASTLE_BOY){
+        runCastleBoy();
         return;
     }
 
