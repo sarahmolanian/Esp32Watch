@@ -10,6 +10,7 @@
 #include "sprites.h"
 #include "DinoGame.h"
 #include "castleboy.h"
+#include "flappybird.h"
 #include "bluetooth_module.h"
 #include "web_server.h"
 #include <WiFi.h>
@@ -442,45 +443,27 @@ void runDino() {
     forceRedraw  = true;
 }
 
+// ===== Flappy Bird RUNNER =====
+static bool flappyInitialised = false;
+
+void runFlappyBird() {
+    if (!flappyInitialised) {
+        FlappyBird_SetBackPin(BTN_BACK);  // pin 20
+        FlappyBird_Init();
+        flappyInitialised = true;
+    }
+    if (FlappyBird_Loop()) {
+        // Back was pressed — return to games menu
+        flappyInitialised = false;
+        currentState = UI_GAME;
+        forceRedraw  = true;
+        OLED_BufferClear();
+        OLED_Flush();
+    }
+}
+
 // ===== CASTLE BOY RUNNER =====
 static bool castleboyInitialised = false;
-
-/*void runCastleBoy() {
-    if (!castleboyInitialised) {
-        castleboy_setup();
-        castleboyInitialised = true;
-    }
-
-    bool keepRunning = castleboy_loop();
-     // Spin in a tight loop like runDoom() — castleboy_loop() manages its own frame rate
-    while (castleboy_loop()) {
-        // yield to RTOS so WiFi/BT tasks don't starve
-        yield();
-    }
-    
-    // Fill screen white so the fade has something to fade from
-    CB::Display::fillRect(0, 0, SCREEN_W, SCREEN_H, 1);
-    CB::Display::display();   // push white frame to hardware
-
-    if (!keepRunning) {
-        // Fade out screen on exit — same effect as Doom
-        for (uint8_t i = GRADIENT_COUNT - 1; i < GRADIENT_COUNT; i--) {
-            fadeScreen(i, false);
-            displayFlush();
-            delay(40);
-            if (i == 0) break;
-        }
-    }
-
-   
-    
-    // castleboy_loop() returned false = player held BACK to exit
-    castleboyInitialised = false;
-    currentState = UI_GAME;
-    forceRedraw  = true;
-    OLED_BufferClear();
-    OLED_Flush();
-}*/
 
 void runCastleBoy() {
     if (!castleboyInitialised) {
@@ -598,8 +581,6 @@ void handleInput() {
             forceRedraw  = true;
         }
     }
-
-    // NOTE: UI_DOOM_1993 and UI_DINO_GAME are intentionally NOT handled here.
 
     // ===== SETTINGS =====
     else if (currentState == UI_SETTINGS) {
@@ -786,7 +767,7 @@ void ui_update() {
         return;
     }
 
-    // Dino Game owns the CPU while active                // ← NEW
+    // Dino Game owns the CPU while active                
     if (currentState == UI_DINO_GAME) {
         runDino();
         return;
@@ -795,6 +776,11 @@ void ui_update() {
     if (currentState == UI_CASTLE_BOY){
         runCastleBoy();
         return;
+    }
+
+    if (currentState == UI_FLAPPY_BIRD) {
+    runFlappyBird();
+    return;
     }
 
     if (millis() - lastUpdate < 50) return;
