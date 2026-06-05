@@ -14,7 +14,7 @@ namespace CB {
 #define BTN_UP     6
 #define BTN_DOWN   7
 #define BTN_SELECT 10   // A button: jump / confirm
-#define BTN_BACK   20   // B button: sword attack
+#define BTN_BACK   3   // B button: sword attack
 // Combos: UP+BACK = throw knife / menu up
 //         DOWN+BACK = duck / menu down
 

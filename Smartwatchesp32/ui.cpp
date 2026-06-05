@@ -14,6 +14,10 @@
 #include "bluetooth_module.h"
 #include "web_server.h"
 #include <WiFi.h>
+#include "esp_sleep.h"
+#include "esp_attr.h"
+#include "driver/gpio.h"
+//#include <NimBLEDevice.h>
 
 // ===== UI STATES =====
 enum UIState {
@@ -48,6 +52,9 @@ static String selectedSSID     = "";
 static bool   wifiConnected    = false;   
 static char   wifiIPStr[20]    = "";
 static int btNotifIndex = 0;   // which notification is selected
+// ===== OLED SLEEP Mode =====
+static bool oledSleeping = false;          
+static unsigned long oledOffTime  = 0;     
 
 // ===== Keyboard instance =====
 static KeyboardState kb;
@@ -57,9 +64,11 @@ const char* menuItems[] = {
     "Settings",
     "Set Time",
     "Games",
-    "Reset Steps"
+    "Reset Steps",
+    "Sleep Mode",
+    "Shutdown"
 };
-#define MENU_SIZE 4
+#define MENU_SIZE 6
 
 // ===== SETTINGS MENU =====
 const char* settingsItems[] = {
@@ -93,7 +102,7 @@ static bool doomInitialised = false;
 #define BTN_UP     6
 #define BTN_DOWN   7
 #define BTN_SELECT 10
-#define BTN_BACK   20
+#define BTN_BACK   3
 
 #define UI_DEBOUNCE_MS 350
 
@@ -217,11 +226,12 @@ void drawHome() {
 void drawMenu() {
     OLED_BufferClear();
     OLED_ShowString(30, 0, "MENU", 12);
-    for (int i = 0; i < MENU_SIZE; i++) {
+    for (int i = 0; i < 4; i++) {
+        int idx = (menuIndex + i) % MENU_SIZE;
         int y = 14 + i * 12;
-        if (i == menuIndex)
+        if (i == 0)
             OLED_ShowString(0, y, ">", 12);
-        OLED_ShowString(10, y, menuItems[i], 12);
+        OLED_ShowString(10, y, menuItems[idx], 12);
     }
     OLED_Flush();
 }
@@ -419,6 +429,7 @@ void drawBluetoothNotifs() {
     OLED_Flush();
 }
 
+
 // ===== DOOM RUNNER =====
 void runDoom() {
     if (!doomInitialised) {
@@ -496,6 +507,16 @@ void runCastleBoy() {
 
 // ===== INPUT HANDLING =====
 void handleInput() {
+    // ===== Oled SLeep =====
+    if (oledSleeping) {
+        if (btnPressed(BTN_SELECT)) {
+            // Wake OLED
+            oledSleeping = false;
+            OLED_WR_Byte(0xAF, OLED_CMD);  // display on command
+            forceRedraw = true;
+        }
+        return;  // swallow all other input while OLED is off
+    }
 
     // ===== HOME =====
     if (currentState == UI_HOME) {
@@ -535,6 +556,46 @@ void handleInput() {
             }
             else if (menuIndex == 3) {
                 sc_resetSteps();
+            }
+            else if (menuIndex == 4) {
+                // Turn OLED off, ESP keeps running, steps keep counting
+                oledSleeping = true;
+                OLED_WR_Byte(0xAE, OLED_CMD);  // display off
+                OLED_BufferClear();
+            }
+            /*else if (menuIndex == 5) {
+                
+                bt_prepareForSleep();
+                delay(500);
+
+                // Stop WiFi
+                WiFi.mode(WIFI_OFF);
+                delay(300);
+
+                // Save steps
+                sc_saveStepsToRTC();
+
+                // Turn OLED off
+                OLED_WR_Byte(0xAE, OLED_CMD);
+
+                // Set RTC flag
+                rtc_inShutdown = true;
+
+                // Configure GPIO3 for wakeup using IDF directly
+                gpio_reset_pin((gpio_num_t)3);
+                gpio_set_direction((gpio_num_t)3, GPIO_MODE_INPUT);
+                gpio_pullup_en((gpio_num_t)3);
+                gpio_pulldown_dis((gpio_num_t)3);
+
+                esp_deep_sleep_enable_gpio_wakeup(
+                    (1ULL << 3),
+                    ESP_GPIO_WAKEUP_GPIO_LOW
+                );
+                esp_deep_sleep_start();
+                // never returns
+            }*/
+            else if (menuIndex == 5) {
+                shutdownRequested = true;  // signal loop() to handle it
             }
             forceRedraw = true;
         }
@@ -785,6 +846,14 @@ void ui_update() {
 
     if (millis() - lastUpdate < 50) return;
     lastUpdate = millis();
+
+    // Don't draw anything while OLED is sleeping
+    if (oledSleeping) {
+        handleInput();   // still check SELECT to wake
+        sc_update();     // still count steps
+        clock_update();  // still tick clock
+        return;          // skip all drawing
+    }
 
     if (currentState == UI_WIFI_PASS) {
         handleInput();

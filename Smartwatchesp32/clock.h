@@ -2,6 +2,10 @@
 #define CLOCK_H
 
 #include <Arduino.h>
+#include "esp_attr.h"   // ← for RTC_DATA_ATTR
+
+extern RTC_DATA_ATTR bool rtc_inShutdown;   
+extern RTC_DATA_ATTR uint32_t rtc_savedTimeSec;
 
 struct ClockTime {
     int hour;
@@ -11,9 +15,9 @@ struct ClockTime {
 
 void clock_init();
 void clock_update();
-
 ClockTime clock_getTime();
 void clock_setTime(int h, int m, int s);
-void drawBattery(int x, int y, int percent);
+void clock_saveTimeToRTC();
+void enterShutdown();
 
 #endif

@@ -7,5 +7,6 @@ void battery_init();
 void battery_update();
 
 float battery_getPercentage();
+void IRAM_ATTR battery_isr();
 
 #endif

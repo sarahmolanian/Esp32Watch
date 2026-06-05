@@ -273,6 +273,13 @@ static AndroidRxCB      s_androidRxCB;
 
 void bt_init() {
     // NVS must be ready before NimBLE so bond keys are saved to flash
+    static bool initialised = false;
+    if (initialised) {
+        Serial.println("[BT] bt_init called twice — skipping");
+        return;
+    }
+    initialised = true;
+    
     esp_err_t nvsErr = nvs_flash_init();
     if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES ||
         nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -488,4 +495,14 @@ bool bt_hasNewNotification() {
     bool flag      = s_newNotifFlag;
     s_newNotifFlag = false;
     return flag;
+}
+
+void bt_prepareForSleep() {
+    if (!s_enabled) return;
+    if (s_connected)
+        NimBLEDevice::getServer()->disconnect(0);
+    delay(200);
+    NimBLEDevice::stopAdvertising();
+    s_enabled   = false;
+    s_connected = false;
 }

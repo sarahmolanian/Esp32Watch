@@ -7,14 +7,14 @@
 #define K_UP        6
 #define K_DOWN      7
 #define K_FIRE      10
-#define K_LEFT      20    // BACK button → rotate left
+#define K_LEFT      3//20    // BACK button → rotate left
 // Rotate right is derived: if not left and player is strafing, handled in loop
 // We don't have a dedicated right-rotate button, so we use a second combo:
 // UP + FIRE held briefly → rotate right  (see input.cpp)
 // Or simply: no dedicated right. You can wire a 5th button to any free GPIO
 // and set K_RIGHT to that pin. For now K_RIGHT = K_LEFT to compile cleanly;
 // the game will only rotate left unless you define a real pin.
-#define K_RIGHT     20    // Change to your 5th button GPIO if you have one
+#define K_RIGHT     3//20    // Change to your 5th button GPIO if you have one
 
 #define USE_INPUT_PULLUP  // buttons wired to GND
 

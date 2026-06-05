@@ -37,7 +37,7 @@
 #define BTN_UP         6
 #define BTN_DOWN       7
 #define BTN_SELECT     10
-#define BTN_BACK       20
+#define BTN_BACK       3
 #define UI_DEBOUNCE_MS 200
 
 // ============================================================

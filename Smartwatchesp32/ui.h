@@ -5,5 +5,6 @@
 
 void ui_init();
 void ui_update();
+extern volatile bool shutdownRequested;
 
 #endif

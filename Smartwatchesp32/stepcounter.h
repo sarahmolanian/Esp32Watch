@@ -2,10 +2,8 @@
 #define STEPCOUNTER_H
 
 #include <stdint.h>
+#include "esp_attr.h"
 
-void sc_interrupt();
-void sc_update_from_interrupt();
-void sc_interrupt();
 
 // Initialize the step counter (sensor + config)
 void sc_init();
@@ -19,6 +17,6 @@ uint32_t sc_getSteps();
 
 // Reset step count to zero
 void sc_resetSteps();
-
-
+void sc_saveStepsToRTC();      // ← call before shutdown
+void sc_restoreStepsFromRTC(); // ← call after wakeup
 #endif

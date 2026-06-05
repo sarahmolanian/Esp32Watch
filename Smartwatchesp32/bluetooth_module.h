@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+
 // ============================================================
 // Notification structure
 // ============================================================
@@ -76,5 +77,7 @@ void bt_clearAll();
  * Clears the flag automatically each call — poll once per frame.
  */
 bool bt_hasNewNotification();
+
+void bt_prepareForSleep();  // ← graceful stop without deinit
 
 #endif // BLUETOOTH_MODULE_H
