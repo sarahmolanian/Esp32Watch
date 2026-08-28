@@ -113,6 +113,14 @@ void OLED_ClearPoint(uint8_t x, uint8_t y) {
     OLED_GRAM[x][y / 8] &= ~(1 << (y % 8));
 }
 
+void OLED_FillRect(uint8_t x, uint8_t y, uint8_t w, uint8_t h) {
+    for (uint8_t yy = y; yy < y + h; yy++) {
+        for (uint8_t xx = x; xx < x + w; xx++) {
+            OLED_ClearPoint(xx, yy);
+        }
+    }
+}
+
 // ============================================================
 void OLED_ShowChar(uint8_t x, uint8_t y, const char chr, uint8_t size1) {
     uint8_t i, m, temp, size2, chr1;

@@ -72,6 +72,15 @@ void loop() {
         clock_saveTimeToRTC();  // ← save time before sleep
 
         rtc_inShutdown = true;
+
+        // Show shutdown message
+        OLED_BufferClear();
+        OLED_ShowString(10, 16, "Shutting down...", 12);
+        OLED_ShowString(5, 36, "Do not press", 12);
+        OLED_ShowString(5, 50, "any buttons", 12);
+        OLED_Flush();
+        delay(2000);
+        
         OLED_WR_Byte(0xAE, OLED_CMD);
         delay(50);
 

@@ -17,6 +17,11 @@
 #include "esp_sleep.h"
 #include "esp_attr.h"
 #include "driver/gpio.h"
+#include "wallpapers.h"
+#include <Preferences.h>
+#include "mario.h"
+#include "pokemonlegends.h"
+#include "Space.h"
 //#include <NimBLEDevice.h>
 
 // ===== UI STATES =====
@@ -35,7 +40,8 @@ enum UIState {
     UI_WIFI_STATUS,
     UI_BLUETOOTH,
     UI_BLUETOOTH_NOTIF,
-    UI_SET_TIME
+    UI_SET_TIME,
+    UI_WALLPAPER
 };
 
 static UIState currentState = UI_HOME;
@@ -46,7 +52,11 @@ static UIState  lastState   = UI_HOME;
 static bool     forceRedraw = true;
 static int      wifiIndex   = 0;
 static bool     wifiToggleSelected = true;
-
+// ===== Wallpaper =====
+static uint8_t currentWallpaper = 0;  // 0 = none
+static int     wallpaperIndex   = 0;  // selection cursor
+static Preferences wallpaperPrefs;
+// =====================
 static char   wifiPassword[32] = "";
 static String selectedSSID     = "";
 static bool   wifiConnected    = false;   
@@ -58,6 +68,21 @@ static unsigned long oledOffTime  = 0;
 
 // ===== Keyboard instance =====
 static KeyboardState kb;
+
+
+
+// ===== Shoe Icon =====
+
+const unsigned char epd_bitmap_shoes[] PROGMEM = {
+    0x00, 0x00,
+    0xF8, 0x00,
+    0xFC, 0x00,
+    0xFE, 0x00,
+    0xFF, 0xE0,
+    0x80, 0x10,
+    0xFF, 0xFF
+};
+
 
 // ===== MENU =====
 const char* menuItems[] = {
@@ -151,6 +176,145 @@ bool isHolding(int pin) {
     return false;
 }
 
+// ===== WALLPAPER STORAGE =====
+void wallpaper_save(uint8_t index) {
+    wallpaperPrefs.begin("watchprefs", false);
+    wallpaperPrefs.putUChar("wallpaper", index);
+    wallpaperPrefs.end();
+}
+
+uint8_t wallpaper_get() {
+    return currentWallpaper;
+}
+
+void wallpaper_load() {
+    wallpaperPrefs.begin("watchprefs", true);
+    currentWallpaper = wallpaperPrefs.getUChar("wallpaper", 0);
+    wallpaperPrefs.end();
+    if (currentWallpaper >= WALLPAPER_COUNT)
+        currentWallpaper = 0;
+}
+
+// ===== DRAW WALLPAPER =====
+static void drawWallpaper() {
+    if (currentWallpaper == 0) return;
+
+    // Wallpaper 1 = animated Mario Kart
+    if (currentWallpaper == 1) {
+        static uint8_t marioFrame = 0;
+        static uint32_t marioLastTime = 0;
+
+        uint32_t now = millis();
+        uint16_t delay_ms =
+            pgm_read_word(&mario_frame_delays_ms[marioFrame]);
+
+        if (now - marioLastTime >= delay_ms) {
+            marioLastTime = now;
+            marioFrame++;
+
+            if (marioFrame >= mario_frame_count)
+                marioFrame = 0;
+        }
+
+        const uint8_t* frame =
+            mario_data + (uint32_t)marioFrame * mario_frame_size;
+
+        for (uint8_t page = 0; page < 8; page++) {
+            for (uint8_t col = 0; col < 128; col++) {
+                OLED_GRAM[col][page] =
+                    pgm_read_byte(frame + page * 128 + col);
+            }
+        }
+
+        return;
+    }
+
+
+    // Wallpaper 2 = animated Pokemon Legends
+    if (currentWallpaper == 2) {
+        static uint8_t pokemonLegendsFrame = 0;
+        static uint32_t pokemonLegendsLastTime = 0;
+
+        uint32_t now = millis();
+
+        uint16_t delay_ms =
+            pgm_read_word(&pokemon_legends_frame_delays_ms[pokemonLegendsFrame]);
+
+        if (now - pokemonLegendsLastTime >= delay_ms) {
+            pokemonLegendsLastTime = now;
+            pokemonLegendsFrame++;
+
+            if (pokemonLegendsFrame >= pokemon_legends_frame_count)
+                pokemonLegendsFrame = 0;
+        }
+
+        const uint8_t* frame =
+            pokemon_legends_data + (uint32_t)pokemonLegendsFrame * pokemon_legends_frame_size;
+
+        for (uint8_t page = 0; page < 8; page++) {
+            for (uint8_t col = 0; col < 128; col++) {
+                OLED_GRAM[col][page] =
+                    pgm_read_byte(frame + page * 128 + col);
+            }
+        }
+
+        return;
+    }
+
+
+    // Wallpaper 5 = Space GIF 
+    if (currentWallpaper == 3) {
+        static uint8_t SpaceFrame = 0;
+        static uint32_t SpaceLastTime = 0;
+ 
+        uint32_t now = millis();
+        uint16_t delay_ms =
+            pgm_read_word(&Space_frame_delays_ms[SpaceFrame]);
+ 
+        if (now - SpaceLastTime >= delay_ms) {
+            SpaceLastTime = now;
+            SpaceFrame++;
+ 
+            if (SpaceFrame >= Space_frame_count)
+                SpaceFrame = 0;
+        }
+ 
+        const uint8_t* frame =
+            //Space_data[SpaceFrame];
+            Space_data + (uint32_t)SpaceFrame * Space_frame_size;
+ 
+        for (uint8_t page = 0; page < 8; page++) {
+            for (uint8_t col = 0; col < 128; col++) {
+                OLED_GRAM[col][page] =
+                    pgm_read_byte(frame + page * 128 + col);
+            }
+        }
+ 
+        return;
+    }
+
+    // Wallpapers 2-4: static bitmaps
+    const uint8_t* bmp = nullptr;
+    switch (currentWallpaper) {
+        case 2: bmp = wallpaper_2; break;
+        case 3: bmp = wallpaper_3; break;
+        case 4: bmp = wallpaper_4; break;
+        case 5: bmp = wallpaper_5; break;
+        case 6: bmp = wallpaper_6; break;
+        case 7: bmp = wallpaper_7; break;
+        case 8: bmp = wallpaper_8; break;
+
+        default: return;
+    }
+    for (uint8_t page = 0; page < 8; page++) {
+        for (uint8_t col = 0; col < 128; col++) {
+            OLED_GRAM[col][page] = pgm_read_byte(
+                bmp + page * 128 + col);
+        }
+    }
+}
+
+
 // ===== INIT =====
 void ui_init() {
     OLED_Init();
@@ -165,11 +329,32 @@ void ui_init() {
 
     keyboard_init(&kb);
     bt_init();
-
+    wallpaper_load();
     OLED_BufferClear();
     //OLED_Flush();
     OLED_Refresh();
 }
+
+// ===== Shoe ICON =====
+
+void drawStepsShoes(int x, int y) {
+    const int width = 12;
+    const int height = 7;
+
+    for (int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+
+            int byteIndex = row * 2 + (col / 8);
+            int bitIndex = 7 - (col % 8);
+
+            if (pgm_read_byte(&epd_bitmap_shoes[byteIndex]) &
+                (1 << bitIndex)) {
+                OLED_DrawPoint(x + col, y + row);
+            }
+        }
+    }
+}
+
 
 // ===== BATTERY ICON =====
 void drawBattery(int x, int y, int percent) {
@@ -195,14 +380,23 @@ void drawBattery(int x, int y, int percent) {
 void drawHome() {
     OLED_BufferClear();
 
+    // Draw wallpaper first, then UI on top
+    drawWallpaper();
+
+    // Shoes icon - top left
+    OLED_FillRect(0, 0, 16, 10);
+    drawStepsShoes(2, 1);
+
     ClockTime t = clock_getTime();
     char timeStr[10];
     sprintf(timeStr, "%02d:%02d:%02d", t.hour, t.minute, t.second);
-    OLED_ShowString(20, 16, timeStr, 16);
+    OLED_ShowString(2, 16, timeStr, 16);
 
     char stepStr[20];
-    sprintf(stepStr, "Steps:%lu", sc_getSteps());
-    OLED_ShowString(10, 40, stepStr, 12);
+    sprintf(stepStr, "%lu", sc_getSteps());
+    uint8_t stepWidth = strlen(stepStr) * 6 + 4;
+    OLED_FillRect(16, 0, stepWidth, 10);
+    OLED_ShowString8(17, 1, stepStr);
 
     int batt = (int)battery_getPercentage();
     char battStr[6];
@@ -210,8 +404,10 @@ void drawHome() {
     int textWidth = strlen(battStr) * 6;
     int batteryX  = 128 - 13;
     int textX     = batteryX - textWidth - 2;
+    OLED_FillRect(textX - 2, 0, (batteryX + 13) - (textX - 2), 10);
     drawBattery(batteryX, 0, batt);
     OLED_ShowString8(textX, 0, battStr);
+
     int wsNotifs = ws_getNotificationCount();
     if (wsNotifs > 0) {
         char wsBuf[8];
@@ -425,6 +621,29 @@ void drawBluetoothNotifs() {
         char body[22];
         snprintf(body, sizeof(body), "  %.18s", n->body);
         OLED_ShowString8(0, y + 9, body);
+    }
+    OLED_Flush();
+}
+
+
+
+// ===== DRAW WALLPAPER SELECTION =====
+void drawWallpaperSelect() {
+    OLED_BufferClear();
+    OLED_ShowString(10, 0, "WALLPAPER", 12);
+
+    for (int i = 0; i < 4; i++) {
+        int idx = (wallpaperIndex + i) % WALLPAPER_COUNT;
+        int y = 14 + i * 12;
+        if (i == 0)
+            OLED_ShowString(0, y, ">", 12);
+        // Show name + checkmark if active
+        char buf[20];
+        if (idx == currentWallpaper)
+            sprintf(buf, "%s *", wallpaperNames[idx]);
+        else
+            sprintf(buf, "%s", wallpaperNames[idx]);
+        OLED_ShowString(10, y, buf, 12);
     }
     OLED_Flush();
 }
@@ -665,6 +884,11 @@ void handleInput() {
                 currentState = UI_BLUETOOTH;
                 forceRedraw  = true;
             }
+            else if (settingsIndex == 2) {
+                wallpaperIndex = currentWallpaper; // start cursor at current
+                currentState   = UI_WALLPAPER;
+                forceRedraw    = true;
+            }
         }
         if (btnPressed(BTN_BACK)) {
             currentState = UI_MENU;
@@ -793,6 +1017,32 @@ void handleInput() {
     }
 
 
+    // ===== WALLPAPER =====
+    else if (currentState == UI_WALLPAPER) {
+        if (btnPressed(BTN_UP)) {
+            wallpaperIndex--;
+            if (wallpaperIndex < 0) wallpaperIndex = WALLPAPER_COUNT - 1;
+            forceRedraw = true;
+        }
+        if (btnPressed(BTN_DOWN)) {
+            wallpaperIndex++;
+            if (wallpaperIndex >= WALLPAPER_COUNT) wallpaperIndex = 0;
+            forceRedraw = true;
+        }
+        if (btnPressed(BTN_SELECT)) {
+            // Apply and save immediately
+            currentWallpaper = wallpaperIndex;
+            wallpaper_save(currentWallpaper);
+            forceRedraw = true;
+        }
+        if (btnPressed(BTN_BACK)) {
+            currentState = UI_SETTINGS;
+            forceRedraw  = true;
+        }
+    } 
+
+
+
     // ===== SET TIME =====
     else if (currentState == UI_SET_TIME) {
         if (btnPressed(BTN_UP)) {
@@ -896,6 +1146,7 @@ void ui_update() {
         case UI_FLAPPY_BIRD:     drawGameScreen("Flappy Bird");     break;
         case UI_BLUETOOTH:       drawBluetooth();                   break;
         case UI_BLUETOOTH_NOTIF: drawBluetoothNotifs();             break;
+        case UI_WALLPAPER:       drawWallpaperSelect();             break;
         // UI_DOOM_1993 and UI_DINO_GAME handled at top via runDoom()/runDino()
         default: break;
     }
