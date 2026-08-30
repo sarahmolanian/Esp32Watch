@@ -41,7 +41,15 @@ enum UIState {
     UI_BLUETOOTH,
     UI_BLUETOOTH_NOTIF,
     UI_SET_TIME,
-    UI_WALLPAPER
+    UI_WALLPAPER,
+    UI_Notifications,
+    UI_Missed_Calls,
+    UI_Text_Messages,
+    UI_Telegram,
+    UI_WhatsApp,
+    UI_Instagram,
+    UI_Gmail,
+    UI_Outlook
 };
 
 static UIState currentState = UI_HOME;
@@ -54,7 +62,6 @@ static int      wifiIndex   = 0;
 static bool     wifiToggleSelected = true;
 // ===== Wallpaper =====
 static uint8_t currentWallpaper = 0;  // 0 = none
-static int     wallpaperIndex   = 0;  // selection cursor
 static Preferences wallpaperPrefs;
 // =====================
 static char   wifiPassword[32] = "";
@@ -68,6 +75,9 @@ static unsigned long oledOffTime  = 0;
 
 // ===== Keyboard instance =====
 static KeyboardState kb;
+
+// ===== how many items fit on screen at once =====
+const int visibleCount = 4;
 
 
 
@@ -84,16 +94,25 @@ const unsigned char epd_bitmap_shoes[] PROGMEM = {
 };
 
 
+// ===== Notifications Icon =====
+
+const unsigned char Notifications_Icon [] PROGMEM = {
+	0x7f, 0xc0, 0xbf, 0xa0, 0xdf, 0x60, 0xee, 0xe0, 0xd5, 0x60, 0xbb, 0xa0, 0x7f, 0xc0
+};
+
+
 // ===== MENU =====
 const char* menuItems[] = {
     "Settings",
     "Set Time",
     "Games",
     "Reset Steps",
+    "Notifications",
     "Sleep Mode",
     "Shutdown"
+    
 };
-#define MENU_SIZE 6
+#define MENU_SIZE 7
 
 // ===== SETTINGS MENU =====
 const char* settingsItems[] = {
@@ -113,9 +132,31 @@ const char* gamesItems[] = {
 };
 #define GAMES_SIZE 5
 
+
+// ===== Notifications =====
+const char* notificationItems[] = {
+    "Missed Calls:",
+    "Text Messages:",
+    "Telegram:",
+    "WhatsApp:",
+    "Instagram:",
+    "Gmail:",
+    "Outlook:"
+    
+};
+#define NOTIFICATIONS_SIZE 7
+
 static int settingsIndex = 0;
+static int settingsTopIndex = 0;
 static int menuIndex     = 0;
+static int menuTopIndex = 0;
 static int gamesIndex    = 0;
+static int gamesTopIndex = 0;
+static int notificationIndex    = 0;
+static int notificationTopIndex = 0;
+static int wallpaperIndex = 0;
+static int wallpaperTopIndex = 0;
+
 
 // ===== TIMING =====
 static unsigned long lastUpdate = 0;
@@ -355,6 +396,24 @@ void drawStepsShoes(int x, int y) {
     }
 }
 
+// ===== Notifications ICON =====
+void drawNotificationsIcon(int x, int y) {
+    const int width = 11;
+    const int height = 7;
+
+    for (int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+
+            int byteIndex = row * 2 + (col / 8);
+            int bitIndex = 7 - (col % 8);
+
+            if (pgm_read_byte(&Notifications_Icon[byteIndex]) &
+                (1 << bitIndex)) {
+                OLED_DrawPoint(x + col, y + row);
+            }
+        }
+    }
+}
 
 // ===== BATTERY ICON =====
 void drawBattery(int x, int y, int percent) {
@@ -387,6 +446,20 @@ void drawHome() {
     OLED_FillRect(0, 0, 16, 10);
     drawStepsShoes(2, 1);
 
+    // Notifications icon - top left
+    OLED_FillRect(16, 0, 46, 10);
+    drawNotificationsIcon(33,1);
+
+    int btNotifs = bt_getNotificationCount();
+
+    if (btNotifs > 0) {
+        char notifStr[6];
+        sprintf(notifStr, "%d", btNotifs);
+
+        // Put count immediately to the right of the bell
+        OLED_ShowString8(46, 1, notifStr);
+    }
+
     ClockTime t = clock_getTime();
     char timeStr[10];
     sprintf(timeStr, "%02d:%02d:%02d", t.hour, t.minute, t.second);
@@ -408,12 +481,12 @@ void drawHome() {
     drawBattery(batteryX, 0, batt);
     OLED_ShowString8(textX, 0, battStr);
 
-    int wsNotifs = ws_getNotificationCount();
+    /*int wsNotifs = ws_getNotificationCount();
     if (wsNotifs > 0) {
         char wsBuf[8];
         sprintf(wsBuf, "N:%d", wsNotifs);
         OLED_ShowString8(90, 54, wsBuf);
-    }
+    }*/
 
     OLED_Flush();
 }
@@ -421,13 +494,39 @@ void drawHome() {
 // ===== DRAW MENU =====
 void drawMenu() {
     OLED_BufferClear();
+
     OLED_ShowString(30, 0, "MENU", 12);
+
     for (int i = 0; i < 4; i++) {
-        int idx = (menuIndex + i) % MENU_SIZE;
+        int idx = menuTopIndex + i;
+
+        if (idx >= MENU_SIZE)
+            break;
+
         int y = 14 + i * 12;
-        if (i == 0)
+
+        if (idx == menuIndex)
             OLED_ShowString(0, y, ">", 12);
+
         OLED_ShowString(10, y, menuItems[idx], 12);
+    }
+
+    OLED_Flush();
+}
+
+
+void drawNotifications(){
+    OLED_BufferClear();
+    OLED_ShowString(30, 0, "Notifications", 12);
+    for (int i = 0; i < 4; i++) {
+        int idx = notificationTopIndex + i;
+        if (idx >= NOTIFICATIONS_SIZE)
+            break;
+
+        int y = 14 + i * 12;
+        if (idx == notificationIndex)
+            OLED_ShowString(0, y, ">", 12);
+        OLED_ShowString(10, y, notificationItems[idx], 12);
     }
     OLED_Flush();
 }
@@ -437,12 +536,17 @@ void drawGames() {
     OLED_BufferClear();
     OLED_ShowString(25, 0, "GAMES", 12);
 
-    // show 3 items at a time, scroll with gamesIndex
     for (int i = 0; i < 4; i++) {
-        int idx = (gamesIndex + i) % GAMES_SIZE;
-        int y   = 14 + i * 12;
-        if (i == 0)
+        int idx = gamesTopIndex + i;
+
+        if (idx >= GAMES_SIZE)
+            break;
+
+        int y = 14 + i * 12;
+
+        if (idx == gamesIndex)
             OLED_ShowString(0, y, ">", 12);
+
         OLED_ShowString(10, y, gamesItems[idx], 12);
     }
 
@@ -630,21 +734,32 @@ void drawBluetoothNotifs() {
 // ===== DRAW WALLPAPER SELECTION =====
 void drawWallpaperSelect() {
     OLED_BufferClear();
+
     OLED_ShowString(10, 0, "WALLPAPER", 12);
 
     for (int i = 0; i < 4; i++) {
-        int idx = (wallpaperIndex + i) % WALLPAPER_COUNT;
+        int idx = wallpaperTopIndex + i;
+
+        if (idx >= WALLPAPER_COUNT)
+            break;
+
         int y = 14 + i * 12;
-        if (i == 0)
+
+        // Draw > next to selected wallpaper
+        if (idx == wallpaperIndex)
             OLED_ShowString(0, y, ">", 12);
-        // Show name + checkmark if active
+
+        // Show * next to currently applied wallpaper
         char buf[20];
+
         if (idx == currentWallpaper)
             sprintf(buf, "%s *", wallpaperNames[idx]);
         else
             sprintf(buf, "%s", wallpaperNames[idx]);
+
         OLED_ShowString(10, y, buf, 12);
     }
+
     OLED_Flush();
 }
 
@@ -747,16 +862,53 @@ void handleInput() {
 
     // ===== MENU =====
     else if (currentState == UI_MENU) {
+
         if (btnPressed(BTN_UP)) {
+
+            // Move selection up
             menuIndex--;
-            if (menuIndex < 0) menuIndex = MENU_SIZE - 1;
+
+            // Wrap from first to last
+            if (menuIndex < 0) {
+                menuIndex = MENU_SIZE - 1;
+
+                // Show the last 4 items
+                menuTopIndex = MENU_SIZE - visibleCount;
+
+                if (menuTopIndex < 0)
+                    menuTopIndex = 0;
+            }
+            else {
+                // If selection moved above visible window,
+                // scroll window up
+                if (menuIndex < menuTopIndex) {
+                    menuTopIndex = menuIndex;
+                }
+            }
+
             forceRedraw = true;
         }
         if (btnPressed(BTN_DOWN)) {
+
+            // Move selection down
             menuIndex++;
-            if (menuIndex >= MENU_SIZE) menuIndex = 0;
+
+            // Wrap from last to first
+            if (menuIndex >= MENU_SIZE) {
+                menuIndex = 0;
+                menuTopIndex = 0;
+            }
+            else {
+                // If selection moved below visible window,
+                // scroll window down
+                if (menuIndex >= menuTopIndex + visibleCount) {
+                    menuTopIndex = menuIndex - visibleCount + 1;
+                }
+            }
+
             forceRedraw = true;
         }
+
         if (btnPressed(BTN_SELECT)) {
             if (menuIndex == 0) {
                 currentState = UI_SETTINGS;
@@ -776,44 +928,20 @@ void handleInput() {
             else if (menuIndex == 3) {
                 sc_resetSteps();
             }
-            else if (menuIndex == 4) {
+
+            else if (menuIndex == 4){
+                notificationIndex   = 0;
+                currentState = UI_Notifications;
+
+            }
+            else if (menuIndex == 5) {
                 // Turn OLED off, ESP keeps running, steps keep counting
                 oledSleeping = true;
                 OLED_WR_Byte(0xAE, OLED_CMD);  // display off
                 OLED_BufferClear();
             }
-            /*else if (menuIndex == 5) {
-                
-                bt_prepareForSleep();
-                delay(500);
-
-                // Stop WiFi
-                WiFi.mode(WIFI_OFF);
-                delay(300);
-
-                // Save steps
-                sc_saveStepsToRTC();
-
-                // Turn OLED off
-                OLED_WR_Byte(0xAE, OLED_CMD);
-
-                // Set RTC flag
-                rtc_inShutdown = true;
-
-                // Configure GPIO3 for wakeup using IDF directly
-                gpio_reset_pin((gpio_num_t)3);
-                gpio_set_direction((gpio_num_t)3, GPIO_MODE_INPUT);
-                gpio_pullup_en((gpio_num_t)3);
-                gpio_pulldown_dis((gpio_num_t)3);
-
-                esp_deep_sleep_enable_gpio_wakeup(
-                    (1ULL << 3),
-                    ESP_GPIO_WAKEUP_GPIO_LOW
-                );
-                esp_deep_sleep_start();
-                // never returns
-            }*/
-            else if (menuIndex == 5) {
+            
+            else if (menuIndex == 6) {
                 shutdownRequested = true;  // signal loop() to handle it
             }
             forceRedraw = true;
@@ -827,13 +955,48 @@ void handleInput() {
     // ===== GAMES LIST =====
     else if (currentState == UI_GAME) {
         if (btnPressed(BTN_UP)) {
+
+            // Move selection up
             gamesIndex--;
-            if (gamesIndex < 0) gamesIndex = GAMES_SIZE - 1;
+
+            // Wrap from first to last
+            if (gamesIndex < 0) {
+                gamesIndex = GAMES_SIZE - 1;
+
+                // Show the last 4 items
+                gamesTopIndex = GAMES_SIZE - visibleCount;
+
+                if (gamesTopIndex < 0)
+                    gamesTopIndex = 0;
+            }
+            else {
+                // If selection moved above visible window,
+                // scroll window up
+                if (gamesIndex < gamesTopIndex) {
+                    gamesTopIndex = gamesIndex;
+                }
+            }
+
             forceRedraw = true;
         }
         if (btnPressed(BTN_DOWN)) {
+
+            // Move selection down
             gamesIndex++;
-            if (gamesIndex >= GAMES_SIZE) gamesIndex = 0;
+
+            // Wrap from last to first
+            if (gamesIndex >= GAMES_SIZE) {
+                gamesIndex = 0;
+                gamesTopIndex = 0;
+            }
+            else {
+                // If selection moved below visible window,
+                // scroll window down
+                if (gamesIndex >= gamesTopIndex + visibleCount) {
+                    gamesTopIndex = gamesIndex - visibleCount + 1;
+                }
+            }
+
             forceRedraw = true;
         }
         if (btnPressed(BTN_SELECT)) {
@@ -1020,13 +1183,44 @@ void handleInput() {
     // ===== WALLPAPER =====
     else if (currentState == UI_WALLPAPER) {
         if (btnPressed(BTN_UP)) {
+
             wallpaperIndex--;
-            if (wallpaperIndex < 0) wallpaperIndex = WALLPAPER_COUNT - 1;
+
+            // Wrap first -> last
+            if (wallpaperIndex < 0) {
+                wallpaperIndex = WALLPAPER_COUNT - 1;
+
+                wallpaperTopIndex = WALLPAPER_COUNT - visibleCount;
+
+                if (wallpaperTopIndex < 0)
+                    wallpaperTopIndex = 0;
+            }
+            else {
+                // Move the window up if > leaves the top
+                if (wallpaperIndex < wallpaperTopIndex) {
+                    wallpaperTopIndex = wallpaperIndex;
+                }
+            }
+
             forceRedraw = true;
         }
         if (btnPressed(BTN_DOWN)) {
+
             wallpaperIndex++;
-            if (wallpaperIndex >= WALLPAPER_COUNT) wallpaperIndex = 0;
+
+            // Wrap last -> first
+            if (wallpaperIndex >= WALLPAPER_COUNT) {
+                wallpaperIndex = 0;
+                wallpaperTopIndex = 0;
+            }
+            else {
+                // Move window down if > leaves the bottom
+                if (wallpaperIndex >= wallpaperTopIndex + visibleCount) {
+                    wallpaperTopIndex =
+                        wallpaperIndex - visibleCount + 1;
+                }
+            }
+
             forceRedraw = true;
         }
         if (btnPressed(BTN_SELECT)) {
@@ -1040,6 +1234,81 @@ void handleInput() {
             forceRedraw  = true;
         }
     } 
+
+
+
+    else if (currentState == UI_Notifications) {
+        if (btnPressed(BTN_UP)) {
+            notificationIndex--;
+            if (notificationIndex < 0) {
+                notificationIndex = NOTIFICATIONS_SIZE - 1;
+                // Show the last 4 items
+                notificationTopIndex = NOTIFICATIONS_SIZE - visibleCount;
+
+                if (notificationTopIndex < 0)
+                    notificationTopIndex = 0;
+            }
+            else {
+                // If selection moved above visible window,
+                // scroll window up
+                if (notificationIndex < notificationTopIndex) {
+                    notificationTopIndex = notificationIndex;
+                }
+            }
+            forceRedraw = true;
+        }
+
+        if (btnPressed(BTN_DOWN)) {
+            notificationIndex++;
+
+            if (notificationIndex >= NOTIFICATIONS_SIZE) {
+                notificationIndex = 0;
+                notificationTopIndex = 0;
+            }
+            else {
+                // If selection moved below visible window,
+                // scroll window down
+                if (notificationIndex >= notificationTopIndex + visibleCount) {
+                    notificationTopIndex = notificationIndex - visibleCount + 1;
+                }
+            }
+            forceRedraw = true;
+        }
+        if (btnPressed(BTN_SELECT)) {
+            if (notificationIndex == 0) {
+                currentState = UI_Missed_Calls;
+                forceRedraw  = true;
+            }
+            else if (notificationIndex == 1){
+                currentState = UI_Text_Messages;
+                forceRedraw  = true;
+            }
+            else if (notificationIndex == 2) {
+                currentState   = UI_Telegram;
+                forceRedraw    = true;
+            }
+            else if (notificationIndex == 3){
+                currentState   = UI_WhatsApp;
+                forceRedraw    = true;
+            }
+            else if (notificationIndex == 4) {
+                currentState   = UI_Instagram;
+                forceRedraw    = true;
+            }
+            else if (notificationIndex == 5){
+                currentState   = UI_Gmail;
+                forceRedraw    = true;
+            }
+            else if (notificationIndex == 6){
+                currentState   = UI_Outlook;
+                forceRedraw    = true;
+            }
+        }
+        if (btnPressed(BTN_BACK)) {
+            currentState = UI_MENU;
+            forceRedraw  = true;
+        }
+    }
 
 
 
@@ -1147,6 +1416,7 @@ void ui_update() {
         case UI_BLUETOOTH:       drawBluetooth();                   break;
         case UI_BLUETOOTH_NOTIF: drawBluetoothNotifs();             break;
         case UI_WALLPAPER:       drawWallpaperSelect();             break;
+        case UI_Notifications:   drawNotifications();               break;
         // UI_DOOM_1993 and UI_DINO_GAME handled at top via runDoom()/runDino()
         default: break;
     }
