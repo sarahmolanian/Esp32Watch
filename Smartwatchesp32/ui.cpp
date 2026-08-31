@@ -104,23 +104,23 @@ const unsigned char Notifications_Icon [] PROGMEM = {
 // ===== MENU =====
 const char* menuItems[] = {
     "Settings",
-    "Set Time",
     "Games",
-    "Reset Steps",
     "Notifications",
     "Sleep Mode",
     "Shutdown"
     
 };
-#define MENU_SIZE 7
+#define MENU_SIZE 5
 
 // ===== SETTINGS MENU =====
 const char* settingsItems[] = {
     "WiFi",
     "Bluetooth",
-    "Wallpaper"
+    "Wallpaper",
+    "Set Time",
+    "Reset Steps"
 };
-#define SETTINGS_SIZE 3
+#define SETTINGS_SIZE 5
 
 // ===== GAMES MENU =====
 const char* gamesItems[] = {
@@ -156,6 +156,7 @@ static int notificationIndex    = 0;
 static int notificationTopIndex = 0;
 static int wallpaperIndex = 0;
 static int wallpaperTopIndex = 0;
+static int categoryNotifIndex = 0;
 
 
 // ===== TIMING =====
@@ -515,21 +516,191 @@ void drawMenu() {
 }
 
 
-void drawNotifications(){
+
+
+// ============================================================
+// Notification category helpers
+// ============================================================
+
+static bool notificationMatchesCategory(const BTNotification* n, int category)
+{
+    if (!n) return false;
+
+    switch (category) {
+
+        case 0: // Missed Calls
+            return strcmp(n->app, "Missed Call") == 0;
+
+        case 1: // Text Messages
+            return strcmp(n->app, "Messages") == 0;
+
+        case 2: // Telegram
+            return strcmp(n->app, "Telegram") == 0;
+
+        case 3: // WhatsApp
+            return strcmp(n->app, "WhatsApp") == 0;
+
+        case 4: // Instagram
+            return strcmp(n->app, "Instagram") == 0;
+
+        case 5: // Gmail
+            return strcmp(n->app, "Gmail") == 0;
+
+        case 6: // Outlook
+            return strcmp(n->app, "Outlook") == 0;
+
+        default:
+            return false;
+    }
+}
+
+
+static int getNotificationCategoryCount(int category)
+{
+    int count = 0;
+
+    int total = bt_getNotificationCount();
+
+    for (int i = 0; i < total; i++) {
+        const BTNotification* n = bt_getNotification(i);
+
+        if (!notificationMatchesCategory(n, category))
+            continue;
+
+        if (n->unread)
+            count++;
+    }
+
+    return count;
+}
+
+
+void drawNotifications()
+{
     OLED_BufferClear();
-    OLED_ShowString(30, 0, "Notifications", 12);
+
+    OLED_ShowString(30, 0, "NOTIFICATIONS", 12);
+
     for (int i = 0; i < 4; i++) {
+
         int idx = notificationTopIndex + i;
+
         if (idx >= NOTIFICATIONS_SIZE)
             break;
 
         int y = 14 + i * 12;
+
         if (idx == notificationIndex)
             OLED_ShowString(0, y, ">", 12);
-        OLED_ShowString(10, y, notificationItems[idx], 12);
+
+        char buf[22];
+
+        int count = getNotificationCategoryCount(idx);
+
+        snprintf(
+            buf,
+            sizeof(buf),
+            "%s %d",
+            notificationItems[idx],
+            count
+        );
+
+        OLED_ShowString8(10, y, buf);
     }
+
     OLED_Flush();
 }
+
+
+
+
+
+static void drawNotificationCategory(const char* title, int category)
+{
+    OLED_BufferClear();
+
+    OLED_ShowString(25, 0, title, 12);
+
+    int total = bt_getNotificationCount();
+
+    int current = 0;
+    int shown = 0;
+
+    for (int i = 0; i < total; i++) {
+
+        const BTNotification* n = bt_getNotification(i);
+
+        if (!notificationMatchesCategory(n, category))
+            continue;
+
+        if (current < categoryNotifIndex) {
+            current++;
+            continue;
+        }
+
+        if (shown >= 3)
+            break;
+
+        int y = 14 + shown * 17;
+
+        if (current == categoryNotifIndex)
+            OLED_ShowString8(0, y, ">");
+
+        char line[22];
+
+        snprintf(
+            line,
+            sizeof(line),
+            "%.20s",
+            n->title
+        );
+
+        OLED_ShowString8(8, y, line);
+
+        char body[22];
+
+        snprintf(
+            body,
+            sizeof(body),
+            "%.20s",
+            n->body
+        );
+
+        OLED_ShowString8(8, y + 7, body);
+
+        shown++;
+        current++;
+    }
+
+    if (shown == 0)
+        OLED_ShowString8(15, 28, "No notifications");
+
+    OLED_Flush();
+}
+
+
+
+static int getCurrentNotificationCategory()
+{
+    switch (currentState) {
+
+        case UI_Missed_Calls: return 0;
+        case UI_Text_Messages: return 1;
+        case UI_Telegram:      return 2;
+        case UI_WhatsApp:      return 3;
+        case UI_Instagram:     return 4;
+        case UI_Gmail:         return 5;
+        case UI_Outlook:       return 6;
+
+        default:
+            return -1;
+    }
+}
+
+
+
+
+
 
 // ===== DRAW GAMES =====
 void drawGames() {
@@ -579,11 +750,16 @@ void drawSetTime() {
 void drawSettings() {
     OLED_BufferClear();
     OLED_ShowString(20, 0, "SETTINGS", 12);
-    for (int i = 0; i < SETTINGS_SIZE; i++) {
+    for (int i = 0; i < 4; i++) {
+        int idx = settingsTopIndex + i;
+        if (idx >= SETTINGS_SIZE)
+            break;
+
         int y = 14 + i * 12;
-        if (i == settingsIndex)
+
+        if (idx == settingsIndex)
             OLED_ShowString(0, y, ">", 12);
-        OLED_ShowString(10, y, settingsItems[i], 12);
+        OLED_ShowString(10, y, settingsItems[idx], 12);
     }
     OLED_Flush();
 }
@@ -914,34 +1090,23 @@ void handleInput() {
                 currentState = UI_SETTINGS;
             }
             else if (menuIndex == 1) {
-                ClockTime t = clock_getTime();
-                setHour   = t.hour;
-                setMinute = t.minute;
-                setSecond = t.second;
-                setField  = 0;
-                currentState = UI_SET_TIME;
-            }
-            else if (menuIndex == 2) {
                 gamesIndex   = 0;
                 currentState = UI_GAME;
             }
-            else if (menuIndex == 3) {
-                sc_resetSteps();
-            }
 
-            else if (menuIndex == 4){
+            else if (menuIndex == 2){
                 notificationIndex   = 0;
                 currentState = UI_Notifications;
 
             }
-            else if (menuIndex == 5) {
+            else if (menuIndex == 3) {
                 // Turn OLED off, ESP keeps running, steps keep counting
                 oledSleeping = true;
                 OLED_WR_Byte(0xAE, OLED_CMD);  // display off
                 OLED_BufferClear();
             }
             
-            else if (menuIndex == 6) {
+            else if (menuIndex == 4) {
                 shutdownRequested = true;  // signal loop() to handle it
             }
             forceRedraw = true;
@@ -1029,12 +1194,30 @@ void handleInput() {
     else if (currentState == UI_SETTINGS) {
         if (btnPressed(BTN_UP)) {
             settingsIndex--;
-            if (settingsIndex < 0) settingsIndex = SETTINGS_SIZE - 1;
+
+            if (settingsIndex < 0) {
+                settingsIndex = SETTINGS_SIZE - 1;
+                settingsTopIndex = SETTINGS_SIZE - visibleCount;
+
+                if (settingsTopIndex < 0)
+                    settingsTopIndex = 0;
+            }
+            else if (settingsIndex < settingsTopIndex) {
+                settingsTopIndex = settingsIndex;
+            }
+
             forceRedraw = true;
         }
         if (btnPressed(BTN_DOWN)) {
             settingsIndex++;
-            if (settingsIndex >= SETTINGS_SIZE) settingsIndex = 0;
+            if (settingsIndex >= SETTINGS_SIZE) {
+                settingsIndex = 0;
+                settingsTopIndex = 0;
+            }
+            else if (settingsIndex >= settingsTopIndex + visibleCount) {
+                settingsTopIndex = settingsIndex - visibleCount + 1;
+            }
+            
             forceRedraw = true;
         }
         if (btnPressed(BTN_SELECT)) {
@@ -1051,6 +1234,20 @@ void handleInput() {
                 wallpaperIndex = currentWallpaper; // start cursor at current
                 currentState   = UI_WALLPAPER;
                 forceRedraw    = true;
+            }
+            else if (settingsIndex == 3) {
+                ClockTime t = clock_getTime();
+                setHour   = t.hour;
+                setMinute = t.minute;
+                setSecond = t.second;
+                setField  = 0;
+                currentState = UI_SET_TIME;
+                forceRedraw = true;
+            }
+
+            else if (settingsIndex == 4) {
+                sc_resetSteps();
+                forceRedraw = true;
             }
         }
         if (btnPressed(BTN_BACK)) {
@@ -1275,6 +1472,8 @@ void handleInput() {
             forceRedraw = true;
         }
         if (btnPressed(BTN_SELECT)) {
+            categoryNotifIndex = 0;
+
             if (notificationIndex == 0) {
                 currentState = UI_Missed_Calls;
                 forceRedraw  = true;
@@ -1309,6 +1508,83 @@ void handleInput() {
             forceRedraw  = true;
         }
     }
+        
+
+
+
+
+
+    // ============================================================
+    // INDIVIDUAL NOTIFICATION CATEGORY
+    // ============================================================
+
+    else if (currentState == UI_Missed_Calls ||
+             currentState == UI_Text_Messages ||
+             currentState == UI_Telegram ||
+             currentState == UI_WhatsApp ||
+             currentState == UI_Instagram ||
+             currentState == UI_Gmail ||
+             currentState == UI_Outlook) {
+
+        int category = getCurrentNotificationCategory();
+        int count = getNotificationCategoryCount(category);
+
+        if (btnPressed(BTN_UP)) {
+
+            categoryNotifIndex--;
+
+            if (categoryNotifIndex < 0)
+                categoryNotifIndex = 0;
+
+            forceRedraw = true;
+        }
+
+        if (btnPressed(BTN_DOWN)) {
+
+            categoryNotifIndex++;
+
+            if (categoryNotifIndex >= count)
+                categoryNotifIndex = count - 1;
+
+            if (categoryNotifIndex < 0)
+                categoryNotifIndex = 0;
+
+            forceRedraw = true;
+        }
+
+        if (btnPressed(BTN_SELECT)) {
+
+            // Mark the selected notification as read.
+            int current = 0;
+
+            for (int i = 0;
+                 i < bt_getNotificationCount();
+                 i++) {
+
+                const BTNotification* n = bt_getNotification(i);
+
+                if (!notificationMatchesCategory(n, category))
+                    continue;
+
+                if (current == categoryNotifIndex) {
+                    bt_markRead(i);
+                    break;
+                }
+
+                current++;
+            }
+
+            forceRedraw = true;
+        }
+
+        if (btnPressed(BTN_BACK)) {
+
+            currentState = UI_Notifications;
+            forceRedraw = true;
+        }
+    }
+
+
 
 
 
@@ -1417,6 +1693,13 @@ void ui_update() {
         case UI_BLUETOOTH_NOTIF: drawBluetoothNotifs();             break;
         case UI_WALLPAPER:       drawWallpaperSelect();             break;
         case UI_Notifications:   drawNotifications();               break;
+        case UI_Missed_Calls:    drawNotificationCategory("MISSED CALLS", 0);       break;
+        case UI_Text_Messages:   drawNotificationCategory("MESSAGES", 1);           break;
+        case UI_Telegram:        drawNotificationCategory("TELEGRAM", 2);           break;
+        case UI_WhatsApp:        drawNotificationCategory("WHATSAPP", 3);            break; 
+        case UI_Instagram:       drawNotificationCategory("INSTAGRAM", 4);          break;
+        case UI_Gmail:           drawNotificationCategory("GMAIL", 5);              break;
+        case UI_Outlook:         drawNotificationCategory("OUTLOOK", 6);            break;
         // UI_DOOM_1993 and UI_DINO_GAME handled at top via runDoom()/runDino()
         default: break;
     }
