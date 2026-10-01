@@ -14,9 +14,21 @@
 #include "esp_wifi.h"
 #include "soc/rtc.h"
 #include "battery.h"
+#include "ota_module.h"
 
 #define INT1_PIN            21
 #define BATT_INT_PIN        20
+
+//This cancels out every serial print calls  for debugging
+#define Serial NoSerial
+struct NullSerial {
+    template<typename... A> void begin(A...) {}
+    template<typename... A> void print(A...) {}
+    template<typename... A> void println(A...) {}
+    template<typename... A> void printf(A...) {}
+    void flush() {}
+};
+static NullSerial NoSerial;
 
 void IRAM_ATTR battery_isr();
 volatile uint8_t interruptCount = 0;
@@ -40,6 +52,7 @@ void setup() {
     OLED_BufferClear();
     OLED_Refresh();
     clock_init();
+    ota_restoreStateAfterReboot();   // keeps steps + time after an update
 
     if (cause == ESP_SLEEP_WAKEUP_GPIO) {
         unsigned long t = millis();

@@ -12,7 +12,7 @@
 #include "castleboy.h"
 #include "flappybird.h"
 #include "bluetooth_module.h"
-#include "web_server.h"
+//#include "web_server.h"
 #include <WiFi.h>
 #include "esp_sleep.h"
 #include "esp_attr.h"
@@ -22,6 +22,7 @@
 #include "mario.h"
 #include "pokemonlegends.h"
 #include "Space.h"
+#include "ota_module.h"
 //#include <NimBLEDevice.h>
 
 // ===== UI STATES =====
@@ -49,7 +50,8 @@ enum UIState {
     UI_WhatsApp,
     UI_Instagram,
     UI_Gmail,
-    UI_Outlook
+    UI_Outlook,
+    UI_OTA
 };
 
 static UIState currentState = UI_HOME;
@@ -118,9 +120,10 @@ const char* settingsItems[] = {
     "Bluetooth",
     "Wallpaper",
     "Set Time",
+    "Updates",
     "Reset Steps"
 };
-#define SETTINGS_SIZE 5
+#define SETTINGS_SIZE 6
 
 // ===== GAMES MENU =====
 const char* gamesItems[] = {
@@ -821,7 +824,7 @@ void drawWiFiStatus() {
             IPAddress ip = WiFi.localIP();
             sprintf(wifiIPStr, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
             wifiConnected = true;
-            webserver_begin();
+            //webserver_begin();
         } else {
             // Failed — draw error and wait for BACK
             OLED_BufferClear();
@@ -939,6 +942,61 @@ void drawWallpaperSelect() {
     OLED_Flush();
 }
 
+
+// ===== DRAW Firmware UPDATE SCREEN =====
+static void drawProgressBar(int x, int y, int w, int h, int pct) {
+    for (int i = 0; i < w; i++) { OLED_DrawPoint(x + i, y); OLED_DrawPoint(x + i, y + h - 1); }
+    for (int j = 0; j < h; j++) { OLED_DrawPoint(x, y + j); OLED_DrawPoint(x + w - 1, y + j); }
+    int fill = (w - 4) * pct / 100;
+    for (int i = 0; i < fill; i++)
+        for (int j = 2; j < h - 2; j++) OLED_DrawPoint(x + 2 + i, y + j);
+}
+
+void drawOta() {
+    OLED_BufferClear();
+    OLED_ShowString(30, 0, "UPDATE", 12);
+
+    char buf[24];
+    snprintf(buf, sizeof(buf), "Installed: v%d", FW_VERSION);
+    OLED_ShowString8(0, 16, buf);
+
+    switch (ota_getState()) {
+        case OTA_IDLE:
+            if (WiFi.status() == WL_CONNECTED) OLED_ShowString(0, 30, "SELECT: check", 12);
+            else                               OLED_ShowString8(0, 30, "Connect WiFi first");
+            break;
+        case OTA_CHECKING:
+            OLED_ShowString(0, 30, "Checking...", 12);
+            break;
+        case OTA_UP_TO_DATE:
+            OLED_ShowString(0, 30, "Up to date!", 12);
+            OLED_ShowString8(0, 54, "SELECT: check again");
+            break;
+        case OTA_AVAILABLE:
+            snprintf(buf, sizeof(buf), "New: v%d", ota_getLatestVersion());
+            OLED_ShowString(0, 30, buf, 12);
+            OLED_ShowString8(0, 54, "SELECT: install");
+            break;
+        case OTA_DOWNLOADING: {
+            int pct = ota_getProgress();
+            snprintf(buf, sizeof(buf), "Updating %d%%", pct);
+            OLED_ShowString(0, 26, buf, 12);
+            drawProgressBar(0, 42, 128, 10, pct);
+            OLED_ShowString8(0, 56, "BACK: cancel");
+            break;
+        }
+        case OTA_SUCCESS:
+            OLED_ShowString(0, 30, "Done!", 12);
+            OLED_ShowString8(0, 46, "Restarting...");
+            break;
+        case OTA_ERROR:
+            OLED_ShowString(0, 30, "Failed", 12);
+            OLED_ShowString8(0, 46, ota_getError());
+            OLED_ShowString8(0, 56, "SELECT: retry");
+            break;
+    }
+    OLED_Flush();
+}
 
 // ===== DOOM RUNNER =====
 void runDoom() {
@@ -1246,6 +1304,13 @@ void handleInput() {
             }
 
             else if (settingsIndex == 4) {
+
+                ota_reset();
+                currentState = UI_OTA;
+                forceRedraw = true;
+            }
+
+            else if (settingsIndex == 5) {
                 sc_resetSteps();
                 forceRedraw = true;
             }
@@ -1262,7 +1327,7 @@ void handleInput() {
             if (wifiToggleSelected) {
                 if (wifi_isEnabled()) {
                     // User turning WiFi OFF — stop server and clean up
-                    webserver_stop();
+                    //webserver_stop();
                     wifiConnected = false;
                     wifiIPStr[0]  = '\0';
                     memset(wifiPassword, 0, sizeof(wifiPassword));
@@ -1431,6 +1496,21 @@ void handleInput() {
             forceRedraw  = true;
         }
     } 
+
+
+    // ===== OTA UPDATE =====
+    else if (currentState == UI_OTA) {
+        OtaState s = ota_getState();
+
+        if (btnPressed(BTN_SELECT)) {
+            if (s == OTA_IDLE || s == OTA_UP_TO_DATE || s == OTA_ERROR) ota_startCheck();
+            else if (s == OTA_AVAILABLE)                                ota_startUpdate();
+        }
+        if (btnPressed(BTN_BACK)) {
+            if (s == OTA_DOWNLOADING)    ota_cancel();
+            else if (s != OTA_SUCCESS) { currentState = UI_SETTINGS; forceRedraw = true; }
+        }
+    }
 
 
 
@@ -1659,9 +1739,10 @@ void ui_update() {
     clock_update();
     battery_update();
     wifi_update();
+    ota_update(); 
     sc_update();
     bt_update();
-    webserver_update();
+    //webserver_update();
 
     if (currentState != lastState) {
         OLED_BufferClear();
@@ -1673,10 +1754,10 @@ void ui_update() {
     }
 
     // Flash notification badge on home screen when webapp sends one
-    if (ws_hasNewNotification()) {
+    /*if (ws_hasNewNotification()) {
         // forceRedraw makes the home screen redraw with the notif count
         forceRedraw = true;
-    }
+    }*/
 
     switch (currentState) {
         case UI_HOME:            drawHome();                        break;
@@ -1692,6 +1773,7 @@ void ui_update() {
         case UI_BLUETOOTH:       drawBluetooth();                   break;
         case UI_BLUETOOTH_NOTIF: drawBluetoothNotifs();             break;
         case UI_WALLPAPER:       drawWallpaperSelect();             break;
+        case UI_OTA:             drawOta();                         break;
         case UI_Notifications:   drawNotifications();               break;
         case UI_Missed_Calls:    drawNotificationCategory("MISSED CALLS", 0);       break;
         case UI_Text_Messages:   drawNotificationCategory("MESSAGES", 1);           break;

@@ -124,3 +124,5 @@ void sc_resetSteps() {
     stepCount      = 0;
     rtc_savedSteps = 0;
 }
+
+void sc_setSteps(uint32_t s) { stepCount = s; }

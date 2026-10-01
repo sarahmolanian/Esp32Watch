@@ -19,4 +19,5 @@ uint32_t sc_getSteps();
 void sc_resetSteps();
 void sc_saveStepsToRTC();      // ← call before shutdown
 void sc_restoreStepsFromRTC(); // ← call after wakeup
+void sc_setSteps(uint32_t s);
 #endif
