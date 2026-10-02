@@ -11,7 +11,7 @@
 
 // ---- CHANGE THIS NUMBER FOR EVERY RELEASE -----------------------
 // The watch offers an update when version.txt is higher than this.
-#define FW_VERSION 2
+#define FW_VERSION 1
 // -----------------------------------------------------------------
 
 #define OTA_VERSION_URL  "https://github.com/sarahmolanian/Esp32Watch/releases/latest/download/version.txt"

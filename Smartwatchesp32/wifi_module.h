@@ -1,17 +1,30 @@
-#ifndef WIFI_MODULE_H
-#define WIFI_MODULE_H
-
+#pragma once
 #include <Arduino.h>
 
-void wifi_init();
-void wifi_update();
+enum WifiConnState {
+    WCONN_IDLE,        // not trying to connect
+    WCONN_CONNECTING,  // attempt in progress (never blocks the UI)
+    WCONN_OK,          // connected
+    WCONN_FAILED       // attempt failed, see wifi_getFailText()
+};
 
-void wifi_toggle();
-bool wifi_isEnabled();
-bool wifi_connect(const char* ssid, const char* pass);
+enum WifiFailReason {
+    WFAIL_NONE,
+    WFAIL_WRONG_PASSWORD,
+    WFAIL_NO_NETWORK,
+    WFAIL_TIMEOUT
+};
 
-void wifi_scanNetworks();
-int  wifi_getNetworkCount();
+void        wifi_init();
+void        wifi_toggle();
+bool        wifi_isEnabled();
+void        wifi_update();                 // call every UI tick, never blocks
+int         wifi_getNetworkCount();
 const char* wifi_getSSID(int index);
 
-#endif
+// Connecting (non-blocking)
+void           wifi_beginConnect(const char* ssid, const char* pass);
+void           wifi_cancelConnect();       // stops an attempt / clears an error
+WifiConnState  wifi_getConnState();
+WifiFailReason wifi_getFailReason();
+const char*    wifi_getFailText();         // short text, max 20 chars

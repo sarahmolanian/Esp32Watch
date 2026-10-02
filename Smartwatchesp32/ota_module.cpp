@@ -8,6 +8,7 @@
 #include "bluetooth_module.h"
 #include "stepcounter.h"
 #include "clock.h"
+#include "esp_rom_sys.h"
 
 // ============================================================
 // State (written by the worker task, read by the UI task)
@@ -243,7 +244,8 @@ void ota_update() {
         } else if ((int32_t)(millis() - s_rebootAt) >= 0) {
             saveStateBeforeReboot();
             delay(100);
-            ESP.restart();
+            esp_rom_software_reset_system();   // hard reset, skips the slow shutdown
+            while (true) { }
         }
     }
 }

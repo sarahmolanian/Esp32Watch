@@ -804,50 +804,44 @@ void drawWiFiPass() {
     }
 }
 
+
 // ===== DRAW WIFI STATUS =====
-
 void drawWiFiStatus() {
-
-    // Phase 1: attempt connection (runs only while !wifiConnected)
-    if (!wifiConnected) {
-        OLED_BufferClear();
-        char ssidShort[16];
-        strncpy(ssidShort, selectedSSID.c_str(), 14);
-        ssidShort[14] = '\0';
-        OLED_ShowString(5,  0,  ssidShort, 12);
-        OLED_ShowString(5,  18, "Connecting...", 12);
-        OLED_Flush();
-
-        bool ok = wifi_connect(selectedSSID.c_str(), wifiPassword);
-
-        if (ok) {
-            IPAddress ip = WiFi.localIP();
-            sprintf(wifiIPStr, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-            wifiConnected = true;
-            //webserver_begin();
-        } else {
-            // Failed — draw error and wait for BACK
-            OLED_BufferClear();
-            OLED_ShowString(22, 16, "FAILED!", 12);
-            OLED_ShowString(5,  36, "Press BACK to go back", 8);
-            OLED_Flush();
-        }
-        forceRedraw = true;
-        return;
-    }
-
-    // Phase 2: already connected — draw info screen every tick
     OLED_BufferClear();
-    OLED_ShowString(5,  0,  "Connected!", 12);
 
     char ssidShort[16];
     strncpy(ssidShort, selectedSSID.c_str(), 14);
     ssidShort[14] = '\0';
-    OLED_ShowString(5, 16, ssidShort, 12);
 
-    OLED_ShowString(5, 32, wifiIPStr, 12);
+    switch (wifi_getConnState()) {
+        case WCONN_CONNECTING:
+            OLED_ShowString(5, 0,  ssidShort, 12);
+            OLED_ShowString(5, 18, "Connecting...", 12);
+            OLED_ShowString8(5, 54, "BACK: cancel");
+            break;
 
-    OLED_ShowString(5, 50, "BACK to menu", 8);
+        case WCONN_OK: {
+            IPAddress ip = WiFi.localIP();
+            snprintf(wifiIPStr, sizeof(wifiIPStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+            OLED_ShowString(5, 0,  "Connected!", 12);
+            OLED_ShowString(5, 16, ssidShort, 12);
+            OLED_ShowString(5, 32, wifiIPStr, 12);
+            OLED_ShowString8(5, 54, "BACK to menu");
+            break;
+        }
+
+        case WCONN_FAILED:
+            OLED_ShowString(22, 0, "FAILED!", 12);
+            OLED_ShowString(0, 16, wifi_getFailText(), 12);
+            OLED_ShowString8(0, 38, "SELECT: try again");
+            OLED_ShowString8(0, 54, "BACK: choose network");
+            break;
+
+        default:
+            OLED_ShowString(5, 0, "No connection", 12);
+            OLED_ShowString8(5, 54, "BACK: choose network");
+            break;
+    }
     OLED_Flush();
 }
 
@@ -1326,15 +1320,15 @@ void handleInput() {
         if (btnPressed(BTN_SELECT)) {
             if (wifiToggleSelected) {
                 if (wifi_isEnabled()) {
-                    // User turning WiFi OFF — stop server and clean up
-                    //webserver_stop();
-                    wifiConnected = false;
-                    wifiIPStr[0]  = '\0';
+                    wifi_cancelConnect();
+
+                    wifiIPStr[0] = '\0';
                     memset(wifiPassword, 0, sizeof(wifiPassword));
-                    selectedSSID       = "";
-                    wifiIndex          = 0;
+                    selectedSSID = "";
+                    wifiIndex = 0;
                     wifiToggleSelected = true;
                 }
+                
                 wifi_toggle();
                 if (!wifi_isEnabled()) wifiToggleSelected = true;
             } else {
@@ -1375,17 +1369,38 @@ void handleInput() {
             return;
         }
         if (keyboard_update(&kb)) {
-            strncpy(wifiPassword, kb.password, 31);
-            wifiPassword[31] = '\0';
+            strncpy(wifiPassword, kb.password, sizeof(wifiPassword) - 1);
+            wifiPassword[sizeof(wifiPassword) - 1] = '\0';
+            // Start the NON-BLOCKING WiFi connection.
+            wifi_beginConnect(selectedSSID.c_str(), wifiPassword);
             currentState = UI_WIFI_STATUS;
             forceRedraw  = true;
         }
     }
     // ===== WIFI STATUS =====
     else if (currentState == UI_WIFI_STATUS) {
+
         if (btnPressed(BTN_BACK)) {
+
+            // Cancel an active connection attempt
+            wifi_cancelConnect();
+
             currentState = UI_WIFI;
-            forceRedraw  = true;
+            forceRedraw = true;
+        }
+
+        else if (btnPressed(BTN_SELECT)) {
+
+            // Retry only after a failed connection
+            if (wifi_getConnState() == WCONN_FAILED) {
+
+                wifi_beginConnect(
+                    selectedSSID.c_str(),
+                    wifiPassword
+                );
+
+                forceRedraw = true;
+            }
         }
     }
 
